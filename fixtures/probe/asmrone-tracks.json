@@ -1,0 +1,26 @@
+[
+  {
+    "type": "folder",
+    "title": "mp3",
+    "children": [
+      {
+        "type": "audio",
+        "hash": "1722913/1964679",
+        "title": "01_テスト.mp3",
+        "mediaStreamUrl": "https://raw.example.test/media/stream/RJ01426915/mp3/01.mp3",
+        "mediaDownloadUrl": "https://raw.example.test/media/download/RJ01426915/mp3/01.mp3",
+        "duration": 832.656,
+        "size": 19986795
+      }
+    ]
+  },
+  {
+    "type": "audio",
+    "hash": "1722913/1964680",
+    "title": "01_テスト.wav",
+    "mediaStreamUrl": "https://raw.example.test/media/stream/RJ01426915/wav/01.wav",
+    "mediaDownloadUrl": "https://raw.example.test/media/download/RJ01426915/wav/01.wav",
+    "duration": 832.7,
+    "size": 48000000
+  }
+]

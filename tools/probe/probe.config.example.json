@@ -1,0 +1,27 @@
+{
+  "proxy": "",
+  "dlsite": {
+    "workno": "RJ01426915",
+    "timeoutMs": 25000
+  },
+  "asmrone": {
+    "baseUrl": "",
+    "workno": "",
+    "username": "",
+    "password": "",
+    "timeoutMs": 25000
+  },
+  "webdav": {
+    "baseUrl": "",
+    "username": "",
+    "password": "",
+    "rootPath": "/",
+    "timeoutMs": 25000,
+    "writeTest": true
+  },
+  "local": {
+    "libraryPath": "",
+    "probeFfprobe": true,
+    "ffprobePath": "ffprobe"
+  }
+}

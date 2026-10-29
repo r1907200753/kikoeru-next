@@ -1,0 +1,6 @@
+{
+  "token": "example-token-value",
+  "user": {
+    "name": "tester"
+  }
+}

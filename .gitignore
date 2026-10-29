@@ -1,0 +1,34 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# Local probe config contains credentials and must never be committed
+tools/probe/probe.config.json
+*.local.json
+.env
+.env.*
+
+# Generated probe output can contain private addresses and test data
+reports/
+
+# Local app data / cache
+data/
+cache/
+staging/
+.tmp/
+_cleanup-quarantine/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Qoder workspace metadata
+.qoder-credits/
+
+# desktop packaging output
+release/
