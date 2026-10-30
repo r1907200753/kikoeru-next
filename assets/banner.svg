@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="Kikoeru Next">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17121d"/>
+      <stop offset="0.55" stop-color="#2b1731"/>
+      <stop offset="1" stop-color="#4b2348"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f16a9b"/>
+      <stop offset="0.55" stop-color="#c58cff"/>
+      <stop offset="1" stop-color="#7ed6ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#f16a9b" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#f16a9b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="320" rx="28" fill="url(#bg)"/>
+  <circle cx="1010" cy="70" r="190" fill="url(#glow)"/>
+  <circle cx="1080" cy="250" r="130" fill="#7ed6ff" opacity="0.06"/>
+
+  <g fill="none" stroke="url(#accent)" stroke-linecap="round">
+    <path d="M760 190 C 800 120, 840 260, 880 180 S 960 110, 1000 190 S 1080 250, 1120 170" stroke-width="3" opacity="0.85"/>
+    <path d="M780 218 C 820 155, 860 275, 900 205 S 975 145, 1015 218 S 1085 265, 1125 205" stroke-width="2" opacity="0.45"/>
+    <path d="M800 245 C 840 195, 875 285, 915 235 S 985 185, 1025 245 S 1090 278, 1135 235" stroke-width="1.5" opacity="0.3"/>
+  </g>
+
+  <g fill="#f7edf6">
+    <text x="64" y="132" font-family="Segoe UI, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="58" font-weight="700" letter-spacing="-1.5">Kikoeru Next</text>
+    <text x="66" y="178" font-family="Segoe UI, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="23" opacity="0.92">本地优先的 ASMR 音声库与播放器</text>
+    <text x="66" y="210" font-family="Segoe UI, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="15" opacity="0.62">Local-first ASMR library &amp; player</text>
+  </g>
+
+  <g font-family="Segoe UI, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="13" fill="#e9b7d2" opacity="0.8">
+    <text x="66" y="268">CloudDrive2</text>
+    <text x="176" y="268">asmr.one</text>
+    <text x="268" y="268">Electron</text>
+    <text x="352" y="268">React</text>
+    <text x="418" y="268">SQLite</text>
+  </g>
+
+  <rect x="64" y="284" width="72" height="3" rx="1.5" fill="url(#accent)"/>
+</svg>

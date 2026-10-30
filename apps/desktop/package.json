@@ -1,0 +1,58 @@
+{
+  "name": "@kikoeru-next/desktop",
+  "version": "1.0.6",
+  "private": true,
+  "type": "module",
+  "description": "Kikoeru Next desktop shell",
+  "author": "Kikoeru Next",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:web": "npm --prefix ../web run build",
+    "dev": "node build.mjs && node dev.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/server.test.ts",
+    "pack": "npm run build:web && node build.mjs && electron-builder --win zip"
+  },
+  "build": {
+    "appId": "io.kikoeru.next",
+    "productName": "Kikoeru Next",
+    "directories": {
+      "output": "../../release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "dist/web/**/*",
+      "dist/icon.png"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "toolsets": {
+      "winCodeSign": "0.0.0"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false
+    },
+    "electronDist": "../../node_modules/electron/dist"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "45.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@kikoeru-next/core",
+  "version": "1.0.6",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/scanner.test.ts test/exporter.test.ts test/asmrone-tracks.test.ts test/paths.test.ts test/dlsite.test.ts test/assets.test.ts test/scraper.test.ts test/settings.test.ts test/track-variants.test.ts test/multi-root.test.ts test/auth.test.ts test/operation-log.test.ts test/library-kind.test.ts"
+  },
+  "dependencies": {
+    "@kikoeru-next/shared": "1.0.6",
+    "cheerio": "^1.0.0",
+    "undici": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

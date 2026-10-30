@@ -1,0 +1,23 @@
+{
+  "name": "@kikoeru-next/server",
+  "version": "1.0.6",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/api.test.ts test/static.test.ts test/access.test.ts test/logs.test.ts"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.8",
+    "@kikoeru-next/core": "1.0.6",
+    "@kikoeru-next/shared": "1.0.6",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

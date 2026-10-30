@@ -1,0 +1,20 @@
+{
+  "id": 123456,
+  "source_id": "RJ01426915",
+  "title": "【テスト】耳元囁き",
+  "circle": {
+    "name": "テストサークル"
+  },
+  "tags": [
+    { "name": "ASMR" },
+    { "name": "癒し" }
+  ],
+  "vas": [
+    { "name": "テスト声優" }
+  ],
+  "release": "2025-01-02",
+  "rate": 4.8,
+  "cover": {
+    "url": "https://img.example.test/cover.jpg"
+  }
+}
