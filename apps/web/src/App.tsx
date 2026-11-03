@@ -688,8 +688,12 @@ export function App() {
         <PlayerBar player={player} onExpand={() => setNowPlayingOpen(true)} />
       </div>
 
-      {nowPlayingOpen ? (
-        <NowPlaying player={player} onClose={() => setNowPlayingOpen(false)} />
+      {player.current ? (
+        <NowPlaying
+          player={player}
+          open={nowPlayingOpen}
+          onClose={() => setNowPlayingOpen(false)}
+        />
       ) : null}
 
       <LogWindow open={logsOpen} onClose={() => setLogsOpen(false)} />

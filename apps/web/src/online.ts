@@ -2,6 +2,7 @@ import type {
   OnlineReviewOrder,
   OnlineReviewProgress,
   OnlineTrack,
+  WorkProgress,
 } from './api';
 import type { AudioPriority } from './preferences';
 
@@ -36,6 +37,17 @@ export const ONLINE_REVIEW_ORDER_OPTIONS: Array<{
 ];
 
 export function onlineProgressLabel(value: OnlineReviewProgress | ''): string {
+  return value ? ONLINE_PROGRESS_LABELS[value] : '';
+}
+
+export const WORK_PROGRESS_OPTIONS: Array<{ value: WorkProgress; label: string }> = [
+  { value: 'marked', label: '想听' },
+  { value: 'listening', label: '在听' },
+  { value: 'listened', label: '听过' },
+  { value: 'replay', label: '重听' },
+];
+
+export function workProgressLabel(value: WorkProgress | ''): string {
   return value ? ONLINE_PROGRESS_LABELS[value] : '';
 }
 

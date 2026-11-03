@@ -12,6 +12,7 @@ export interface WorkSummary {
   priceYen: number | null;
   favoriteAt: string;
   metadataStatus: string;
+  hasSubtitle: boolean;
   coverAssetId: number | null;
   relativePath: string;
   rootId: number;
@@ -50,7 +51,10 @@ export interface PlaybackState {
 export interface WorkDetail extends WorkSummary {
   tracks: TrackSummary[];
   playback: PlaybackState | null;
+  progress: WorkProgress | '';
 }
+
+export type WorkProgress = 'marked' | 'listening' | 'listened' | 'replay';
 
 export interface RecentPlayback {
   workId: number;
@@ -248,6 +252,16 @@ export function setWorkFavorite(
   );
 }
 
+export function setWorkProgress(
+  code: string,
+  progress: WorkProgress | null,
+): Promise<{ code: string; progress: WorkProgress | '' }> {
+  return request<{ code: string; progress: WorkProgress | '' }>(
+    `/api/works/${encodeURIComponent(code)}/progress`,
+    jsonInit('PUT', { progress }),
+  );
+}
+
 export function enrichWork(code: string): Promise<{ work: WorkDetail }> {
   return request<{ work: WorkDetail }>(
     `/api/works/${encodeURIComponent(code)}/enrich`,
@@ -313,10 +327,6 @@ export function deleteWork(
 
 export function scanLibrary(rootPath: string): Promise<ScanResult> {
   return request<ScanResult>('/api/scan', jsonInit('POST', { rootPath }));
-}
-
-export function scanAllLibraries(): Promise<{ results: ScanResult[] }> {
-  return request<{ results: ScanResult[] }>('/api/scan', jsonInit('POST', {}));
 }
 
 export function getRecentPlayback(limit = 12): Promise<{ items: RecentPlayback[] }> {
@@ -442,6 +452,7 @@ export type ScrapeWorkStatus =
   | 'ok'
   | 'partial'
   | 'cached'
+  | 'skipped'
   | 'not_found'
   | 'age_gate'
   | 'http_error'
@@ -473,6 +484,7 @@ export interface ScrapeJobResult {
   total: number;
   failed: number;
   cached: number;
+  skipped: number;
   results: ScrapeWorkResult[];
 }
 
@@ -561,6 +573,9 @@ export interface OnlineWork {
   thumbUrl: string;
   local: boolean;
   favoriteAt: string;
+  userRating?: number | null;
+  progress?: OnlineReviewProgress | '';
+  reviewText?: string;
 }
 
 export type OnlineListOrder = 'create_date' | 'release' | 'dl_count' | 'rate_average_2dp';
@@ -653,6 +668,16 @@ export function listOnlineWorks(
 
 export function getOnlineWork(code: string): Promise<OnlineWorkDetail> {
   return request<OnlineWorkDetail>(`/api/online/works/${encodeURIComponent(code)}`);
+}
+
+export function setOnlineProgress(
+  code: string,
+  progress: OnlineReviewProgress,
+): Promise<{ code: string; workId: number; progress: OnlineReviewProgress }> {
+  return request<{ code: string; workId: number; progress: OnlineReviewProgress }>(
+    `/api/online/works/${encodeURIComponent(code)}/progress`,
+    jsonInit('PUT', { progress }),
+  );
 }
 
 export function saveOnlinePlayback(input: {

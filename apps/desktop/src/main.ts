@@ -144,6 +144,7 @@ function createWindow(origin: string): BrowserWindow {
       sandbox: true,
       spellcheck: false,
       webSecurity: true,
+      backgroundThrottling: false,
     },
   });
 

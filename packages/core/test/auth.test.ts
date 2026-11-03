@@ -113,17 +113,21 @@ test('会话 Cookie 解析与构建', () => {
   assert.equal(parseSessionCookie(cleared), '');
 });
 
-test('数据库迁移到 V7 并包含会话表与日志表', () => {
+test('数据库迁移到 V8 并包含会话表、日志表与进度表', () => {
   const db = openDatabase(':memory:');
   try {
     const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    assert.equal(Number(version.user_version), 7);
-    for (const name of ['auth_sessions', 'operation_logs']) {
+    assert.equal(Number(version.user_version), 8);
+    for (const name of ['auth_sessions', 'operation_logs', 'work_progress']) {
       const table = db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
         .get(name) as { name?: string } | undefined;
       assert.equal(table?.name, name);
     }
+    const workColumns = db.prepare('PRAGMA table_info(works)').all() as Array<{
+      name?: string;
+    }>;
+    assert.ok(workColumns.some((column) => column.name === 'has_subtitle'));
   } finally {
     db.close();
   }

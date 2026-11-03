@@ -22,9 +22,11 @@ async function writeFile(root: string, relativePath: string, bytes = 16): Promis
 async function createLibrary(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikoeru-library-'));
   await writeFile(root, 'RJ01426915 测试作品/01 - 开场.mp3');
+  await writeFile(root, 'RJ01426915 测试作品/01 - 开场.vtt');
   await writeFile(root, 'RJ01426915 测试作品/02 - 第二轨.flac');
   await writeFile(root, 'RJ01426915 测试作品/10 - 结尾.mp3');
   await writeFile(root, '[RJ123456] 另一作品/01.mp3');
+  await writeFile(root, '[RJ123456] 另一作品/readme.txt');
   await writeFile(root, 'BJ1234567 第三作品/01.wav');
   await writeFile(root, '合集/RJ7654321 嵌套作品/01.ogg');
   await writeFile(root, 'ZZZ-dup/RJ01426915 重复作品/01.mp3');
@@ -54,6 +56,8 @@ test('扫描识别 RJ/BJ/VJ 作品、中文标题、嵌套目录并跳过重复�
       ['开场', '第二轨', '结尾'],
     );
     assert.equal(work.tracks[0]?.fileName, '01 - 开场.mp3');
+    assert.equal(work.hasSubtitle, true);
+    assert.equal(getWorkByCode(db, 'RJ123456')?.hasSubtitle, false);
 
     const nested = getWorkByCode(db, 'RJ7654321');
     assert.equal(nested?.title, '嵌套作品');
@@ -75,6 +79,7 @@ test('扫描跳过带未完成标记的导出目录，定向扫描可单目录�
   const db = openDatabase(':memory:');
   try {
     await writeFile(root, 'RJ01426918 定向作品/01 - 开场.mp3');
+    await writeFile(root, 'RJ01426918 定向作品/01 - 开场.srt');
     const direct = await scanWorkDir({
       db,
       rootPath: root,
@@ -83,6 +88,7 @@ test('扫描跳过带未完成标记的导出目录，定向扫描可单目录�
     assert.equal(direct.worksFound, 1);
     assert.equal(direct.tracksFound, 1);
     assert.equal(getWorkByCode(db, 'RJ01426918')?.tracks.length, 1);
+    assert.equal(getWorkByCode(db, 'RJ01426918')?.hasSubtitle, true);
 
     await writeFile(root, 'RJ99999999 半成品/01.mp3');
     await writeFile(root, `RJ99999999 半成品/${EXPORT_INCOMPLETE_MARKER}`, 2);

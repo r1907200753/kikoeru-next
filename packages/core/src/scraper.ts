@@ -32,6 +32,7 @@ export type ScrapeWorkStatus =
   | 'ok'
   | 'partial'
   | 'cached'
+  | 'skipped'
   | 'not_found'
   | 'age_gate'
   | 'http_error'
@@ -61,6 +62,24 @@ export async function scrapeWork(
   work: ScrapeWorkItem,
   options: ScrapeOptions,
 ): Promise<ScrapeWorkResult> {
+  if (
+    !options.force &&
+    (work.metadataStatus === 'scraped' ||
+      work.metadataStatus === 'manual' ||
+      work.metadataStatus === 'sidecar')
+  ) {
+    return {
+      workId: work.id,
+      code: work.code,
+      status: 'skipped',
+      message:
+        work.metadataStatus === 'scraped' ? '已刮削，命中缓存' : '已有本地元数据，跳过',
+      cover: 'none',
+      title: work.title,
+      source: 'dlsite',
+    };
+  }
+
   if (!options.force) {
     const cached = getScrapeCache(db, PROVIDER, work.code);
     if (cached) {

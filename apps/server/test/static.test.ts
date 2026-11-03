@@ -71,7 +71,7 @@ test('单源托管：首页、指纹资源、SPA 回退与安全头', async () =
       const pingBody = ping.json<{ ok: boolean; name: string; version: string; serverTime: string }>();
       assert.equal(pingBody.ok, true);
       assert.equal(pingBody.name, 'kikoeru-next');
-      assert.equal(pingBody.version, '1.0.6');
+      assert.equal(pingBody.version, '1.1.4');
       assert.ok(Number.isFinite(Date.parse(pingBody.serverTime)));
     } finally {
       await app.close();

@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   getOnlineWork,
+  setOnlineProgress,
   setWorkFavorite,
+  type OnlineReviewProgress,
   type OnlineWorkDetail,
 } from '../api';
 import { formatTime } from '../format';
-import { preferredOnlineTrackIndex } from '../online';
+import {
+  ONLINE_PROGRESS_OPTIONS,
+  onlineProgressLabel,
+  preferredOnlineTrackIndex,
+} from '../online';
 import { buildOnlinePlayerData } from '../online-player';
 import { trackKey, type PlayerApi } from '../player';
 import { usePreferences } from '../preferences';
@@ -24,6 +30,7 @@ import {
 import { ExportDialog } from './ExportDialog';
 import { OnlineFilesPanel } from './OnlineFilesPanel';
 import { WorkCover } from './WorkCard';
+import { WorkProgressMenu } from './WorkProgressMenu';
 
 export function OnlineWorkPage({
   code,
@@ -39,6 +46,8 @@ export function OnlineWorkPage({
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [progressBusy, setProgressBusy] = useState(false);
+  const [progressNote, setProgressNote] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
   const [onlineView, setOnlineView] = useState<'tree' | 'list'>('tree');
   const [preferences] = usePreferences();
@@ -182,6 +191,27 @@ export function OnlineWorkPage({
       // 失败时保持原状态，下一次刷新会回到服务端真实值。
     } finally {
       setFavoriteBusy(false);
+    }
+  };
+
+  const chooseProgress = async (progress: OnlineReviewProgress) => {
+    const work = detail?.work;
+    if (!work || progressBusy) {
+      return;
+    }
+    setProgressBusy(true);
+    setProgressNote('');
+    try {
+      const result = await setOnlineProgress(work.code, progress);
+      setDetail((previous) =>
+        previous
+          ? { ...previous, work: { ...previous.work, progress: result.progress } }
+          : previous,
+      );
+    } catch (err) {
+      setProgressNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProgressBusy(false);
     }
   };
 
@@ -329,6 +359,18 @@ export function OnlineWorkPage({
                 <ClockIcon /> 继续试听 · {formatTime(resumeInfo.positionMs)}
               </button>
             ) : null}
+            <WorkProgressMenu
+              options={ONLINE_PROGRESS_OPTIONS}
+              value={work.progress ?? ''}
+              currentLabel={onlineProgressLabel(work.progress ?? '')}
+              busy={progressBusy}
+              variant="button"
+              onSelect={(value) => {
+                if (value) {
+                  void chooseProgress(value);
+                }
+              }}
+            />
             {work.local ? (
               <>
                 <a className="btn btn-tonal btn-compact" href={`#/work/${encodeURIComponent(work.local ? work.code : '')}`}>
@@ -361,6 +403,11 @@ export function OnlineWorkPage({
               </>
             )}
           </div>
+          {progressNote ? (
+            <p className="online-progress-note" role="status">
+              {progressNote}
+            </p>
+          ) : null}
           {detail.tracksError ? (
             <div className="notice notice--error notice--inline" role="alert">
               <span>音轨列表获取失败：{detail.tracksError}</span>

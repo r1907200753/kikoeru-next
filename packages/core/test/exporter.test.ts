@@ -405,6 +405,49 @@ test('断点续传会从 .part 文件继续并使用 Range', async () => {
   }
 });
 
+test('元数据大小与源站不一致时以源站实际大小完成', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikoeru-export-size-'));
+  const assetsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikoeru-assets-'));
+  const server = await startAudioServer(
+    new Map([['/audio/a', { bytes: Buffer.from('abcdefgh'), contentType: 'audio/mpeg' }]]),
+  );
+  const db = openDatabase(':memory:');
+  try {
+    const jobId = await createJob(db, root, ['hash-a']);
+    const job = getExportJob(db, jobId);
+    assert.ok(job);
+    const result = await runExportJob({
+      db,
+      job,
+      source: createHttpSource([
+        track('hash-a', '开场/前奏', 100, `${server.base}/audio/a`),
+      ]),
+      assetsDir,
+      ffmpegPath: 'ffmpeg',
+      signal: new AbortController().signal,
+      onUpdate: (patch) => updateExportJob(db, jobId, patch),
+    });
+
+    assert.equal(result.bytes, 8);
+    const finalFile = path.join(
+      root,
+      result.relativePath,
+      'tracks',
+      '01 - 开场 前奏.mp3',
+    );
+    assert.equal((await fs.readFile(finalFile)).toString(), 'abcdefgh');
+    const saved = getExportJob(db, jobId);
+    const savedState = JSON.parse(saved?.stateJson ?? '{}') as ExportJobState;
+    assert.equal(savedState.tracks['hash-a']?.size, 8);
+    assert.equal(savedState.tracks['hash-a']?.status, 'done');
+  } finally {
+    db.close();
+    await server.close();
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(assetsDir, { recursive: true, force: true });
+  }
+});
+
 test('遇到 429 会按 Retry-After 重试后继续下载', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'kikoeru-export-429-'));
   const assetsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kikoeru-assets-'));

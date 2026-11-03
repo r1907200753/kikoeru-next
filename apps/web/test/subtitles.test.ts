@@ -4,6 +4,7 @@ import {
   decodeSubtitleBuffer,
   findActiveCueIndex,
   formatCueTime,
+  latestCueText,
   parseSubtitle,
   parseSubtitleTime,
 } from '../src/subtitles';
@@ -158,4 +159,17 @@ test('活动台词按时间区间判定，间隔处不高亮', () => {
   assert.equal(findActiveCueIndex(cues, 4_000), -1);
   assert.equal(findActiveCueIndex(cues, 5_200), 1);
   assert.equal(findActiveCueIndex(cues, 9_000), -1);
+});
+
+test('桌面歌词在字幕间隙保留上一句，没有开始时为空', () => {
+  const cues = [
+    { startMs: 1_000, endMs: 2_000, text: 'a' },
+    { startMs: 5_000, endMs: 6_000, text: 'b' },
+  ];
+  assert.equal(latestCueText(cues, 500), '');
+  assert.equal(latestCueText(cues, 1_500), 'a');
+  assert.equal(latestCueText(cues, 4_000), 'a');
+  assert.equal(latestCueText(cues, 5_200), 'b');
+  assert.equal(latestCueText(cues, 9_000), 'b');
+  assert.equal(latestCueText([], 1_000), '');
 });

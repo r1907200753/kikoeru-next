@@ -70,10 +70,13 @@ import {
   SESSION_TTL_MS,
   setPassword,
   setWorkFavorite,
+  setWorkProgress,
   updateJob,
   updateWorkManualMetadata,
   updateWorkOnlineMetadata,
   validatePassword,
+  ASMRONE_PROGRESS_VALUES,
+  WORK_PROGRESS_VALUES,
   writeSettings,
   type AsmrOneListOrder,
   type AsmrOnePlaylist,
@@ -89,6 +92,7 @@ import {
   type LibraryKind,
   type OperationLogInput,
   type ScrapeSource,
+  type WorkProgress,
   type WorkSort,
 } from '@kikoeru-next/core';
 import { mimeTypeForFileName, normalizeWorkno } from '@kikoeru-next/shared';
@@ -615,7 +619,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
   app.get('/api/ping', async () => ({
     ok: true,
     name: 'kikoeru-next',
-    version: '1.0.6',
+    version: '1.1.4',
     serverTime: new Date().toISOString(),
   }));
 
@@ -623,7 +627,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     const settings = getSettings();
     return {
       ok: true,
-      version: '1.0.6',
+      version: '1.1.4',
       libraryPath: settings.libraryPath,
       libraryPaths: settings.libraryPaths,
       workCount: countWorks(db),
@@ -1340,6 +1344,32 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     },
   );
 
+  app.put<{ Params: { code: string }; Body: { progress?: unknown } }>(
+    '/api/works/:code/progress',
+    async (request, reply) => {
+      const code = normalizeWorkno(request.params.code);
+      if (!code) {
+        return reply.code(400).send({ error: 'RJ号格式不正确' });
+      }
+      const raw = request.body?.progress;
+      if (raw !== null && typeof raw !== 'string') {
+        return reply.code(400).send({ error: 'progress 必须是字符串或 null' });
+      }
+      const progress = raw === null || raw === '' ? null : raw;
+      if (
+        progress !== null &&
+        !(WORK_PROGRESS_VALUES as readonly string[]).includes(progress)
+      ) {
+        return reply.code(400).send({ error: '不支持的进度标记' });
+      }
+      const result = setWorkProgress(db, code, progress as WorkProgress | null);
+      if (!result) {
+        return reply.code(404).send({ error: '作品不存在' });
+      }
+      return result;
+    },
+  );
+
   app.post<{ Params: { code: string } }>('/api/works/:code/enrich', async (request, reply) => {
     const code = normalizeWorkno(request.params.code);
     if (!code) {
@@ -1688,7 +1718,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
                   : result.cover === 'failed'
                     ? '，封面下载失败'
                     : '，无封面';
-              if (result.status === 'cached') {
+              if (result.status === 'cached' || result.status === 'skipped') {
                 logEvent({
                   category: 'scrape',
                   action: 'scrape.cached',
@@ -1733,9 +1763,13 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
             },
           });
           const failed = results.filter(
-            (result) => result.status !== 'ok' && result.status !== 'cached',
+            (result) =>
+              result.status !== 'ok' &&
+              result.status !== 'cached' &&
+              result.status !== 'skipped',
           ).length;
           const cached = results.filter((result) => result.status === 'cached').length;
+          const skipped = results.filter((result) => result.status === 'skipped').length;
           const coverFailed = results.filter((result) => result.cover === 'failed').length;
           const ok = results.filter(
             (result) => result.status === 'ok' || result.status === 'partial',
@@ -1744,7 +1778,9 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
             level: failed > 0 || coverFailed > 0 ? 'warn' : 'success',
             category: 'scrape',
             action: 'scrape.done',
-            message: `刮削完成：成功 ${ok} 部${cached > 0 ? `，负缓存跳过 ${cached} 部` : ''}${
+            message: `刮削完成：成功 ${ok} 部${
+              skipped > 0 ? `，已有元数据跳过 ${skipped} 部` : ''
+            }${cached > 0 ? `，负缓存跳过 ${cached} 部` : ''}${
               failed > 0 ? `，失败 ${failed} 部` : ''
             }${coverFailed > 0 ? `，封面失败 ${coverFailed} 部` : ''}`,
             detail: {
@@ -1752,6 +1788,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
               ok,
               failed,
               cached,
+              skipped,
               coverFailed,
               force,
               durationMs: Date.now() - scrapeStartedAt,
@@ -1761,7 +1798,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
           updateJob(db, jobId, {
             status: 'done',
             progress: 1,
-            result: { total: results.length, failed, cached, results },
+            result: { total: results.length, failed, cached, skipped, results },
           });
         } catch (error) {
           logEvent({
@@ -2325,6 +2362,14 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     try {
       const info = await provider.fetchWorkInfo(code);
       const work: AsmrOneWork = { ...info, code: info.code || code };
+      let userState: Awaited<ReturnType<typeof provider.fetchWorkUserState>> = null;
+      if (work.id > 0) {
+        try {
+          userState = await provider.fetchWorkUserState(work.id);
+        } catch {
+          // 未登录或源站暂时不可用时不影响作品详情展示。
+        }
+      }
       const localWork = getWorkByCode(db, work.code);
       const tracks: Array<{
         index: number;
@@ -2363,6 +2408,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
       return {
         work: {
           ...work,
+          ...(userState ?? {}),
           coverUrl: `/api/online/works/${work.id}/cover?type=main`,
           thumbUrl: `/api/online/works/${work.id}/cover?type=sam`,
           local: Boolean(localWork),
@@ -2387,6 +2433,42 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
       return sendOnlineError(reply, error);
     }
   });
+
+  app.put<{ Params: { code: string }; Body: { progress?: unknown } }>(
+    '/api/online/works/:code/progress',
+    async (request, reply) => {
+      const code = normalizeWorkno(request.params.code);
+      if (!code) {
+        return reply.code(400).send({ error: 'RJ号格式不正确' });
+      }
+      const progress = request.body?.progress;
+      if (
+        typeof progress !== 'string' ||
+        !(ASMRONE_PROGRESS_VALUES as readonly string[]).includes(progress)
+      ) {
+        return reply.code(400).send({ error: '不支持的进度标记' });
+      }
+      const provider = getOnlineProvider();
+      try {
+        const info = await provider.fetchWorkInfo(code);
+        if (!info.id) {
+          return reply.code(404).send({ error: 'asmr.one 上没有该作品' });
+        }
+        const state = await provider.fetchWorkUserState(info.id);
+        if (!state) {
+          return reply.code(502).send({ error: '无法读取 asmr.one 当前标记' });
+        }
+        await provider.setReviewProgress(
+          info.id,
+          state,
+          progress as AsmrOneReviewProgress,
+        );
+        return { code, workId: info.id, progress };
+      } catch (error) {
+        return sendOnlineError(reply, error);
+      }
+    },
+  );
 
   app.put<{
     Body: {

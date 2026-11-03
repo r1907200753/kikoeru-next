@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TrackSummary, WorkDetail, WorkFileEntry } from '../api';
 import { getOnlineWork, getWork, listWorkFiles, workFileUrl } from '../api';
 import { coverPalette, formatBytes, formatTime } from '../format';
@@ -28,6 +28,7 @@ import {
   fetchSubtitle,
   findActiveCueIndex,
   formatCueTime,
+  latestCueText,
   subtitleFormatLabel,
   type ParsedSubtitle,
 } from '../subtitles';
@@ -41,6 +42,7 @@ import {
 } from '../work-files';
 import { MediaViewer, type MediaViewerState } from './MediaViewer';
 import { buildOnlinePlayerData } from '../online-player';
+import { isDesktopShell } from '../desktop';
 import { WorkCover } from './WorkCard';
 
 const FILE_KIND_LABEL: Record<WorkFileEntry['kind'], string> = {
@@ -93,10 +95,30 @@ function getDocumentPictureInPicture(): DocumentPictureInPictureApi | null {
   );
 }
 
-function updateDocPipText(pipWindow: Window, text: string, fallback: string): void {
-  const target = pipWindow.document.querySelector<HTMLElement>('#np-doc-lyric span');
-  if (target) {
-    target.textContent = text.trim() || fallback || '♪';
+function updateDocPipText(pipWindow: Window, text: string): void {
+  const line = pipWindow.document.querySelector<HTMLElement>('#np-doc-lyric');
+  const target = line?.querySelector<HTMLElement>('span');
+  if (!line || !target) {
+    return;
+  }
+  const content = text.trim();
+  const nextText = content || '♪';
+  if (line.dataset.text === nextText) {
+    return;
+  }
+  line.dataset.text = nextText;
+  target.textContent = nextText;
+  line.dataset.empty = content ? '0' : '1';
+  line.style.fontSize = '';
+  if (content) {
+    const max = Math.max(15, Math.round((line.clientHeight || 110) * 0.22));
+    const min = 12;
+    for (let size = max; size >= min; size -= 1) {
+      line.style.fontSize = `${size}px`;
+      if (target.scrollHeight <= target.clientHeight + 1) {
+        break;
+      }
+    }
   }
 }
 
@@ -110,7 +132,6 @@ const DOC_PIP_ICONS = {
 
 interface DocPipState {
   text: string;
-  fallback: string;
   playing: boolean;
   positionMs: number;
   durationMs: number;
@@ -120,7 +141,7 @@ interface DocPipState {
 
 function syncDocPipWindow(pipWindow: Window, state: DocPipState): void {
   const doc = pipWindow.document;
-  updateDocPipText(pipWindow, state.text, state.fallback);
+  updateDocPipText(pipWindow, state.text);
   const toggle = doc.querySelector<HTMLButtonElement>('[data-action="toggle"]');
   if (toggle) {
     toggle.innerHTML = state.playing ? DOC_PIP_ICONS.pause : DOC_PIP_ICONS.play;
@@ -151,7 +172,40 @@ function fillStyle(percent: number): CSSProperties {
   return { '--fill': `${Math.min(100, Math.max(0, percent))}%` } as CSSProperties;
 }
 
-function drawLyric(canvas: HTMLCanvasElement, text: string, fallback: string): void {
+const LYRIC_FONT_FAMILY = '"Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif';
+
+function wrapLyricLines(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+): { lines: string[]; overflow: boolean } {
+  const lines: string[] = [];
+  let line = '';
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] ?? '';
+    const candidate = line + char;
+    if (line && context.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      if (lines.length >= maxLines) {
+        return { lines, overflow: true };
+      }
+      line = char;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) {
+    lines.push(line);
+  }
+  return { lines, overflow: false };
+}
+
+const PIP_CANVAS_WIDTH = 840;
+const PIP_CANVAS_HEIGHT = 360;
+const PIP_ASPECT = PIP_CANVAS_WIDTH / PIP_CANVAS_HEIGHT;
+
+function drawLyric(canvas: HTMLCanvasElement, text: string): void {
   const context = canvas.getContext('2d');
   if (!context) {
     return;
@@ -169,41 +223,66 @@ function drawLyric(canvas: HTMLCanvasElement, text: string, fallback: string): v
   context.fillStyle = accent || '#2dd4bf';
   context.fillRect(padding, height - Math.round(height * 0.1), width - padding * 2, 4);
 
-  const content = text.trim() || fallback || '♪';
-  const fontSize = Math.round(height * 0.24);
-  context.font = `700 ${fontSize}px "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  const maxWidth = width - padding * 2;
-  const lines: string[] = [];
-  let line = '';
-  for (const char of content) {
-    const candidate = line + char;
-    if (context.measureText(candidate).width > maxWidth && line) {
-      lines.push(line);
-      line = char;
-      if (lines.length >= 2) {
-        break;
-      }
-    } else {
-      line = candidate;
-    }
+  const content = text.replace(/\s+/g, ' ').trim();
+  if (!content) {
+    const placeholderSize = Math.max(12, Math.round(height * 0.15));
+    context.font = `600 ${placeholderSize}px ${LYRIC_FONT_FAMILY}`;
+    context.fillStyle = 'rgba(226, 240, 242, 0.38)';
+    context.fillText('♪', width / 2, height / 2 - height * 0.02);
+    return;
   }
-  if (lines.length < 2 && line) {
-    lines.push(line);
+
+  const maxWidth = width - padding * 2;
+  const maxFontSize = Math.max(13, Math.round(height * 0.18));
+  const minFontSize = Math.max(11, Math.round(height * 0.08));
+  let fontSize = maxFontSize;
+  let lines: string[] = [];
+  let overflow = false;
+  while (fontSize >= minFontSize) {
+    context.font = `700 ${fontSize}px ${LYRIC_FONT_FAMILY}`;
+    const wrapped = wrapLyricLines(context, content, maxWidth, 2);
+    lines = wrapped.lines;
+    overflow = wrapped.overflow;
+    if (!overflow) {
+      break;
+    }
+    fontSize -= 1;
+  }
+  if (overflow) {
+    if (lines.length === 0) {
+      lines = [content];
+    }
+    const lastIndex = Math.min(lines.length, 2) - 1;
+    let last = lines[lastIndex] ?? '';
+    const ellipsis = '…';
+    while (last && context.measureText(last + ellipsis).width > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    lines[lastIndex] = `${last}${ellipsis}`;
   }
   if (lines.length === 0) {
-    lines.push(content);
+    lines = [content];
   }
-  const lineHeight = Math.round(fontSize * 1.28);
-  const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2 - height * 0.04;
+
+  const lineHeight = Math.round(fontSize * 1.26);
+  const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2 - height * 0.02;
   lines.forEach((value, index) => {
     context.fillStyle = index === 0 && lines.length > 1 ? 'rgba(226, 240, 242, 0.78)' : '#f8fafc';
     context.fillText(value, width / 2, startY + index * lineHeight);
   });
 }
 
-export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: () => void }) {
+export function NowPlaying({
+  player,
+  open,
+  onClose,
+}: {
+  player: PlayerApi;
+  open: boolean;
+  onClose: () => void;
+}) {
   const { current } = player;
   const [files, setFiles] = useState<WorkFileEntry[]>([]);
   const [filesError, setFilesError] = useState('');
@@ -214,6 +293,7 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
   const [sideMode, setSideMode] = useState<'subtitle' | 'playlist'>('subtitle');
   const [equalizerOpen, setEqualizerOpen] = useState(false);
   const [pipActive, setPipActive] = useState(false);
+  const [trackSwitching, setTrackSwitching] = useState(false);
   const [pipError, setPipError] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [workDetail, setWorkDetail] = useState<WorkDetail | null>(null);
@@ -223,6 +303,52 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const docPipWindowRef = useRef<Window | null>(null);
   const activeTextRef = useRef('');
+  const pipActiveRef = useRef(false);
+  const trackSwitchGuardRef = useRef(false);
+  const trackSwitchTimerRef = useRef<number | null>(null);
+  const videoCommandRef = useRef<'play' | 'pause' | null>(null);
+  const lastTrackIdRef = useRef(current?.track.id ?? null);
+
+  const markPipActive = useCallback((value: boolean) => {
+    pipActiveRef.current = value;
+    setPipActive(value);
+  }, []);
+
+  const armTrackSwitch = useCallback(() => {
+    trackSwitchGuardRef.current = true;
+    setTrackSwitching(true);
+    if (trackSwitchTimerRef.current !== null) {
+      window.clearTimeout(trackSwitchTimerRef.current);
+    }
+    trackSwitchTimerRef.current = window.setTimeout(() => {
+      trackSwitchGuardRef.current = false;
+      setTrackSwitching(false);
+      trackSwitchTimerRef.current = null;
+    }, 3000);
+  }, []);
+
+  const releaseTrackSwitch = useCallback(() => {
+    if (!trackSwitchGuardRef.current) {
+      return;
+    }
+    if (trackSwitchTimerRef.current !== null) {
+      window.clearTimeout(trackSwitchTimerRef.current);
+    }
+    trackSwitchTimerRef.current = window.setTimeout(() => {
+      trackSwitchGuardRef.current = false;
+      setTrackSwitching(false);
+      trackSwitchTimerRef.current = null;
+    }, 250);
+  }, []);
+
+  const markVideoCommand = useCallback((command: 'play' | 'pause') => {
+    videoCommandRef.current = command;
+    window.setTimeout(() => {
+      if (videoCommandRef.current === command) {
+        videoCommandRef.current = null;
+      }
+    }, 800);
+  }, []);
 
   const workCode = current?.workCode ?? '';
   const workPath = current?.workPath ?? '';
@@ -359,15 +485,114 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       return;
     }
     const onLeave = () => {
-      setPipActive(false);
+      markPipActive(false);
       video.pause();
     };
     video.addEventListener('leavepictureinpicture', onLeave);
     return () => video.removeEventListener('leavepictureinpicture', onLeave);
-  }, []);
+  }, [markPipActive]);
+
+  useEffect(() => {
+    const id = current?.track.id ?? null;
+    if (lastTrackIdRef.current === id) {
+      return;
+    }
+    lastTrackIdRef.current = id;
+    armTrackSwitch();
+  }, [current?.track.id, current?.workCode, armTrackSwitch]);
+
+  useEffect(() => {
+    const audio = player.audioElement;
+    if (!audio) {
+      return;
+    }
+    const onLoadStart = () => armTrackSwitch();
+    const onPlaying = () => releaseTrackSwitch();
+    audio.addEventListener('loadstart', onLoadStart);
+    audio.addEventListener('emptied', onLoadStart);
+    audio.addEventListener('playing', onPlaying);
+    return () => {
+      audio.removeEventListener('loadstart', onLoadStart);
+      audio.removeEventListener('emptied', onLoadStart);
+      audio.removeEventListener('playing', onPlaying);
+    };
+  }, [player.audioElement, armTrackSwitch, releaseTrackSwitch]);
+
+  useEffect(() => {
+    const video = pipVideoRef.current;
+    if (!video) {
+      return;
+    }
+    // 视频画中画的原生控件只控制隐藏视频，这里把播放/暂停同步回主音频。
+    const onPlay = () => {
+      if (videoCommandRef.current === 'play') {
+        videoCommandRef.current = null;
+        return;
+      }
+      if (trackSwitchGuardRef.current) {
+        return;
+      }
+      if (!pipActiveRef.current || document.pictureInPictureElement !== video) {
+        return;
+      }
+      const audio = player.audioElement;
+      if (audio?.paused) {
+        player.toggle();
+      }
+    };
+    const onPause = () => {
+      if (videoCommandRef.current === 'pause') {
+        videoCommandRef.current = null;
+        return;
+      }
+      if (trackSwitchGuardRef.current) {
+        return;
+      }
+      if (!pipActiveRef.current || document.pictureInPictureElement !== video) {
+        return;
+      }
+      const audio = player.audioElement;
+      if (audio && !audio.paused) {
+        player.pause();
+      }
+    };
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    return () => {
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+    };
+  }, [player.audioElement, player.pause, player.toggle]);
+
+  useEffect(() => {
+    if (!pipActive || trackSwitching) {
+      return;
+    }
+    const video = pipVideoRef.current;
+    if (!video || document.pictureInPictureElement !== video) {
+      return;
+    }
+    if (player.playing && video.paused) {
+      markVideoCommand('play');
+      void video.play().catch(() => {
+        if (videoCommandRef.current === 'play') {
+          videoCommandRef.current = null;
+        }
+      });
+    } else if (!player.playing && !video.paused) {
+      markVideoCommand('pause');
+      video.pause();
+    }
+  }, [pipActive, player.playing, trackSwitching, markVideoCommand]);
 
   useEffect(() => {
     return () => {
+      pipActiveRef.current = false;
+      trackSwitchGuardRef.current = false;
+      if (trackSwitchTimerRef.current !== null) {
+        window.clearTimeout(trackSwitchTimerRef.current);
+        trackSwitchTimerRef.current = null;
+      }
       const docWindow = docPipWindowRef.current;
       docPipWindowRef.current = null;
       if (docWindow && !docWindow.closed) {
@@ -384,6 +609,12 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       video.srcObject = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setViewer(null);
+    }
+  }, [open]);
 
   const folderTracks = useMemo(() => {
     if (!current || !activeTrack) {
@@ -413,8 +644,8 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
   }, [workDetail, folderTracks]);
 
   const activeIndex = subtitle ? findActiveCueIndex(subtitle.cues, player.positionMs) : -1;
-  const activeText = activeIndex >= 0 ? (subtitle?.cues[activeIndex]?.text ?? '') : '';
-  activeTextRef.current = activeText;
+  const lyricText = subtitle ? latestCueText(subtitle.cues, player.positionMs) : '';
+  activeTextRef.current = lyricText;
 
   useEffect(() => {
     const docWindow = docPipWindowRef.current;
@@ -422,8 +653,7 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       return;
     }
     syncDocPipWindow(docWindow, {
-      text: activeText,
-      fallback: current?.track.title ?? '',
+      text: lyricText,
       playing: player.playing,
       positionMs: player.positionMs,
       durationMs: player.durationMs,
@@ -431,8 +661,7 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       hasNext: player.hasNext,
     });
   }, [
-    activeText,
-    current?.track.title,
+    lyricText,
     player.playing,
     player.positionMs,
     player.durationMs,
@@ -453,9 +682,9 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
     }
     const canvas = lyricCanvasRef.current;
     if (canvas) {
-      drawLyric(canvas, activeText, current?.track.title ?? '');
+      drawLyric(canvas, lyricText);
     }
-  }, [activeText, pipActive, current?.track.title]);
+  }, [lyricText, pipActive]);
 
   if (!current) {
     return null;
@@ -529,6 +758,7 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
   };
 
   const stopPip = async () => {
+    markPipActive(false);
     const docWindow = docPipWindowRef.current;
     docPipWindowRef.current = null;
     if (docWindow && !docWindow.closed) {
@@ -538,20 +768,24 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
     if (video && document.pictureInPictureElement === video) {
       await document.exitPictureInPicture().catch(() => undefined);
     }
-    setPipActive(false);
   };
 
   const startVideoPip = async () => {
+    const desktop = isDesktopShell();
     const video = pipVideoRef.current;
     const canvas = lyricCanvasRef.current;
     if (!video || !canvas) {
       return;
     }
     if (!document.pictureInPictureEnabled || typeof video.requestPictureInPicture !== 'function') {
-      setPipError('当前浏览器不支持桌面歌词窗口，请使用 Chrome 或 Electron 桌面端。');
+      setPipError(
+        desktop
+          ? '当前桌面端无法打开桌面歌词窗口，请重启应用后重试。'
+          : '当前浏览器不支持桌面歌词窗口，请使用 Chrome 或 Edge。',
+      );
       return;
     }
-    drawLyric(canvas, activeText, current.track.title);
+    drawLyric(canvas, lyricText);
     try {
       if (!video.srcObject) {
         video.srcObject = canvas.captureStream(12);
@@ -561,24 +795,33 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
         await video.play().catch(() => undefined);
       }
       const pipWindow = await video.requestPictureInPicture();
-      setPipActive(true);
+      markPipActive(true);
       pipWindow.addEventListener('resize', () => {
-        canvas.width = Math.max(320, Math.round(pipWindow.width * window.devicePixelRatio));
-        canvas.height = Math.max(80, Math.round(pipWindow.height * window.devicePixelRatio));
-        drawLyric(canvas, activeTextRef.current, current.track.title);
+        const nextWidth = Math.max(320, Math.round(pipWindow.width * window.devicePixelRatio));
+        canvas.width = nextWidth;
+        canvas.height = Math.max(100, Math.round(nextWidth / PIP_ASPECT));
+        drawLyric(canvas, activeTextRef.current);
       });
-      drawLyric(canvas, activeTextRef.current, current.track.title);
+      drawLyric(canvas, activeTextRef.current);
     } catch {
-      setPipError('无法打开桌面歌词窗口，请确认浏览器允许画中画。');
+      video.pause();
+      setPipError(
+        desktop
+          ? '无法打开桌面歌词窗口，请稍后重试；若持续失败请重启应用。'
+          : '无法打开桌面歌词窗口，请确认浏览器允许画中画。',
+      );
     }
   };
 
   const startDocPip = async (api: DocumentPictureInPictureApi) => {
     const pipWindow = await api.requestWindow({
-      width: 484,
-      height: 174,
+      width: 420,
+      height: 180,
       disallowReturnToOpener: true,
     });
+    if (pipWindow.closed) {
+      throw new Error('Document PiP window is not available');
+    }
     docPipWindowRef.current = pipWindow;
     const doc = pipWindow.document;
     doc.title = '桌面歌词';
@@ -588,14 +831,15 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       #np-doc-root { position: relative; height: 100vh; overflow: hidden; }
       #np-doc-lyric {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        padding: 8px 14px; box-sizing: border-box; text-align: center; overflow: hidden;
-        font: 700 clamp(18px, 15vh, 30px)/1.3 "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+        padding: 6px 10px; box-sizing: border-box; text-align: center; overflow: hidden;
+        font: 700 clamp(15px, 12vh, 22px)/1.25 "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
         transition: transform 0.16s ease;
       }
       #np-doc-lyric span {
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
         max-height: 100%; overflow: hidden; white-space: pre-wrap; word-break: break-word;
       }
+      #np-doc-lyric[data-empty="1"] span { font-size: 0.6em; opacity: 0.42; }
       #np-doc-controls {
         position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; gap: 2px;
         padding: 14px 10px 7px; background: linear-gradient(180deg, transparent 0%, rgba(13, 20, 24, 0.94) 34%);
@@ -658,18 +902,17 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       if (docPipWindowRef.current === pipWindow) {
         docPipWindowRef.current = null;
       }
-      setPipActive(false);
+      markPipActive(false);
     });
     syncDocPipWindow(pipWindow, {
-      text: activeText,
-      fallback: current.track.title,
+      text: lyricText,
       playing: player.playing,
       positionMs: player.positionMs,
       durationMs: player.durationMs,
       hasPrev: player.hasPrev,
       hasNext: player.hasNext,
     });
-    setPipActive(true);
+    markPipActive(true);
   };
 
   const togglePip = async () => {
@@ -678,20 +921,23 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
       return;
     }
     setPipError('');
-    const docApi = getDocumentPictureInPicture();
-    if (docApi) {
-      try {
-        await startDocPip(docApi);
-      } catch {
-        setPipError('无法打开桌面歌词窗口，请确认浏览器允许画中画。');
+    if (!isDesktopShell()) {
+      const docApi = getDocumentPictureInPicture();
+      if (docApi) {
+        try {
+          await startDocPip(docApi);
+          return;
+        } catch {
+          // 独立窗口不可用时回退到视频画中画。
+        }
       }
-      return;
     }
     await startVideoPip();
   };
 
   return (
     <>
+      {open ? (
       <div
         className="now-playing"
         role="dialog"
@@ -1047,7 +1293,16 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
         </div>
       ) : null}
 
-      <canvas ref={lyricCanvasRef} width={484} height={174} className="np-pip-canvas" aria-hidden="true" />
+      </div>
+      ) : null}
+
+      <canvas
+        ref={lyricCanvasRef}
+        width={PIP_CANVAS_WIDTH}
+        height={PIP_CANVAS_HEIGHT}
+        className="np-pip-canvas"
+        aria-hidden="true"
+      />
       <video
         ref={pipVideoRef}
         className="np-pip-video"
@@ -1055,9 +1310,8 @@ export function NowPlaying({ player, onClose }: { player: PlayerApi; onClose: ()
         playsInline
         aria-hidden="true"
       />
-      </div>
 
-      {viewer ? (
+      {open && viewer ? (
         <div className="np-media-layer">
           <MediaViewer
             state={viewer}

@@ -340,11 +340,28 @@ async function refreshTrackUrl(
   return files.find((item) => item.hash === hash) ?? fallback;
 }
 
+function totalSizeFromResponse(
+  status: number,
+  headers: Record<string, string>,
+): number {
+  const contentRange = headers['content-range'] ?? '';
+  const rangeMatch = /\/\s*(\d+)\s*$/.exec(contentRange);
+  if (rangeMatch) {
+    const total = Number(rangeMatch[1]);
+    return Number.isFinite(total) && total > 0 ? total : 0;
+  }
+  if (status === 200) {
+    const length = Number(headers['content-length']);
+    return Number.isFinite(length) && length > 0 ? length : 0;
+  }
+  return 0;
+}
+
 async function downloadTrack(options: DownloadTrackOptions): Promise<void> {
   const { source, workId, state, partPath, signal, onBytes } = options;
   let track = options.track;
   await fs.mkdir(path.dirname(partPath), { recursive: true });
-  const expected = track.size > 0 ? track.size : 0;
+  let expected = track.size > 0 ? track.size : 0;
   let attempts = 0;
   let authRefreshed = false;
   let restartedForSize = false;
@@ -390,13 +407,22 @@ async function downloadTrack(options: DownloadTrackOptions): Promise<void> {
       }
       if (response.status === 416) {
         await response.body.destroy();
-        if (expected > 0 && partSize >= expected) {
-          state.bytes = partSize;
-          state.status = 'done';
-          state.error = '';
-          return;
+        const serverTotal = totalSizeFromResponse(response.status, response.headers);
+        if (serverTotal > 0) {
+          expected = serverTotal;
+          state.size = serverTotal;
         }
-        await fs.rm(partPath, { force: true });
+        if (expected > 0 && partSize >= expected) {
+          if (partSize === expected) {
+            state.bytes = partSize;
+            state.status = 'done';
+            state.error = '';
+            return;
+          }
+          await fs.rm(partPath, { force: true });
+        } else {
+          await fs.rm(partPath, { force: true });
+        }
         attempts += 1;
         if (attempts >= MAX_TRACK_ATTEMPTS) {
           throw new Error('断点位置无效，无法继续下载');
@@ -420,6 +446,12 @@ async function downloadTrack(options: DownloadTrackOptions): Promise<void> {
       const append = response.status === 206 && partSize > 0;
       if (!append && partSize > 0) {
         await fs.rm(partPath, { force: true });
+      }
+      const serverTotal = totalSizeFromResponse(response.status, response.headers);
+      if (serverTotal > 0 && serverTotal !== expected) {
+        // 元数据里的 size 可能与源站实际文件不一致，以源站响应为准。
+        expected = serverTotal;
+        state.size = serverTotal;
       }
       // 以磁盘上的 .part 大小为准，避免暂停时内存计数领先于已落盘字节。
       state.bytes = append ? partSize : 0;

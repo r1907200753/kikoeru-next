@@ -147,6 +147,7 @@ export function buildOnlinePlayerData(detail: OnlineWorkDetail): OnlinePlayerDat
     priceYen: detail.work.priceYen,
     favoriteAt: detail.work.favoriteAt,
     metadataStatus: 'online',
+    hasSubtitle: false,
     coverAssetId: null,
     relativePath: '',
     rootId: 0,
@@ -154,6 +155,7 @@ export function buildOnlinePlayerData(detail: OnlineWorkDetail): OnlinePlayerDat
     updatedAt: '',
     tracks,
     playback: null,
+    progress: '',
   };
 
   return {

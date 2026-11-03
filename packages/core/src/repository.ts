@@ -49,6 +49,7 @@ export interface WorkSummary {
   priceYen: number | null;
   favoriteAt: string;
   metadataStatus: string;
+  hasSubtitle: boolean;
   coverAssetId: number | null;
   relativePath: string;
   rootId: number;
@@ -71,7 +72,11 @@ export interface TrackSummary {
 
 export interface WorkDetail extends WorkSummary {
   tracks: TrackSummary[];
+  progress: WorkProgress | '';
 }
+
+export const WORK_PROGRESS_VALUES = ['marked', 'listening', 'listened', 'replay'] as const;
+export type WorkProgress = (typeof WORK_PROGRESS_VALUES)[number];
 
 export interface TrackFileRecord {
   trackId: number;
@@ -94,6 +99,7 @@ export interface UpsertWorkInput {
   codeType: string;
   title: string;
   relativePath: string;
+  hasSubtitle: boolean;
 }
 
 export interface ScannedAudioFile {
@@ -136,6 +142,7 @@ function toWork(row: Row, trackCount: number): WorkSummary {
     priceYen: nullableNum(row, 'price_yen'),
     favoriteAt: text(row, 'favorite_at'),
     metadataStatus: text(row, 'metadata_status') || 'local',
+    hasSubtitle: num(row, 'has_subtitle') === 1,
     coverAssetId: nullableNum(row, 'cover_asset_id'),
     relativePath: text(row, 'relative_path'),
     rootId: num(row, 'root_id'),
@@ -247,17 +254,26 @@ export function upsertWork(
     db.prepare(
       `UPDATE works
        SET title = CASE WHEN metadata_status = 'local' THEN ? ELSE title END,
-           relative_path = ?, root_id = ?, updated_at = ?
+           relative_path = ?, root_id = ?, has_subtitle = ?, updated_at = ?
        WHERE id = ?`,
-    ).run(input.title, input.relativePath, input.rootId, now, id);
+    ).run(input.title, input.relativePath, input.rootId, input.hasSubtitle ? 1 : 0, now, id);
     return { id, inserted: false };
   }
   const result = db
     .prepare(
-      `INSERT INTO works (code, code_type, title, relative_path, root_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO works (code, code_type, title, relative_path, root_id, has_subtitle, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(input.code, input.codeType, input.title, input.relativePath, input.rootId, now, now);
+    .run(
+      input.code,
+      input.codeType,
+      input.title,
+      input.relativePath,
+      input.rootId,
+      input.hasSubtitle ? 1 : 0,
+      now,
+      now,
+    );
   return { id: Number(result.lastInsertRowid), inserted: true };
 }
 
@@ -527,6 +543,41 @@ export function setWorkFavorite(
   return { favoriteAt };
 }
 
+export function getWorkProgress(db: DatabaseSync, workId: number): WorkProgress | '' {
+  const row = db
+    .prepare('SELECT progress FROM work_progress WHERE work_id = ?')
+    .get(workId) as Row | undefined;
+  if (!row) {
+    return '';
+  }
+  const value = text(row, 'progress');
+  return (WORK_PROGRESS_VALUES as readonly string[]).includes(value)
+    ? (value as WorkProgress)
+    : '';
+}
+
+export function setWorkProgress(
+  db: DatabaseSync,
+  code: string,
+  progress: WorkProgress | null,
+): { code: string; progress: WorkProgress | '' } | null {
+  const row = db.prepare('SELECT id FROM works WHERE code = ?').get(code) as Row | undefined;
+  if (!row) {
+    return null;
+  }
+  const workId = num(row, 'id');
+  if (progress === null) {
+    db.prepare('DELETE FROM work_progress WHERE work_id = ?').run(workId);
+    return { code, progress: '' };
+  }
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO work_progress (work_id, progress, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(work_id) DO UPDATE SET progress = excluded.progress, updated_at = excluded.updated_at`,
+  ).run(workId, progress, now);
+  return { code, progress };
+}
+
 export function updateWorkOnlineMetadata(
   db: DatabaseSync,
   workId: number,
@@ -617,7 +668,11 @@ export function getWorkByCode(db: DatabaseSync, code: string): WorkDetail | null
     }
     return naturalCompare(a.fileName, b.fileName);
   });
-  return { ...toWork(row, tracks.length), tracks };
+  return {
+    ...toWork(row, tracks.length),
+    tracks,
+    progress: getWorkProgress(db, num(row, 'id')),
+  };
 }
 
 export function getTrackFile(db: DatabaseSync, trackId: number): TrackFileRecord | null {
@@ -1182,26 +1237,6 @@ export function linkWorkAsset(
     input.originUrl,
     new Date().toISOString(),
   );
-}
-
-export function getWorkAsset(
-  db: DatabaseSync,
-  workId: number,
-  role: string,
-): (AssetRecord & { source: string; originUrl: string }) | null {
-  const row = db
-    .prepare(
-      `SELECT a.*, wa.source, wa.origin_url
-       FROM work_assets wa
-       JOIN assets a ON a.id = wa.asset_id
-       WHERE wa.work_id = ? AND wa.role = ?`,
-    )
-    .get(workId, role) as Row | undefined;
-  if (!row) {
-    return null;
-  }
-  const asset = getAssetRow(row);
-  return { ...asset, source: text(row, 'source'), originUrl: text(row, 'origin_url') };
 }
 
 function getAssetRow(row: Row): AssetRecord {

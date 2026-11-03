@@ -6,7 +6,9 @@ import {
   probeWork,
   scrapeWork,
   setWorkFavorite,
+  setWorkProgress,
   type WorkDetail,
+  type WorkProgress,
 } from '../api';
 import { formatTime } from '../format';
 import {
@@ -23,12 +25,14 @@ import {
   TrashIcon,
   UserIcon,
 } from '../icons';
+import { WORK_PROGRESS_OPTIONS, workProgressLabel } from '../online';
 import type { PlayerApi } from '../player';
 import { circleHref, tagHref, vaHref } from '../tags';
 import { DeleteWorkDialog } from './DeleteWorkDialog';
 import { EditWorkDialog } from './EditWorkDialog';
 import { WorkCover } from './WorkCard';
 import { WorkFilesPanel } from './WorkFilesPanel';
+import { WorkProgressMenu } from './WorkProgressMenu';
 
 const SCRAPE_SOURCE_LABEL = {
   auto: '自动',
@@ -56,6 +60,7 @@ export function WorkPage({
   const [folderNote, setFolderNote] = useState('');
   const [scrapeSource, setScrapeSource] = useState<'auto' | 'dlsite' | 'asmrone'>('auto');
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [progressBusy, setProgressBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [enrichNote, setEnrichNote] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -144,6 +149,21 @@ export function WorkPage({
       setScrapeNote(err instanceof Error ? err.message : String(err));
     } finally {
       setFavoriteBusy(false);
+    }
+  };
+
+  const chooseProgress = async (progress: WorkProgress | null) => {
+    if (!work || progressBusy) {
+      return;
+    }
+    setProgressBusy(true);
+    try {
+      const result = await setWorkProgress(work.code, progress);
+      setWork({ ...work, progress: result.progress });
+    } catch (err) {
+      setScrapeNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProgressBusy(false);
     }
   };
 
@@ -250,6 +270,14 @@ export function WorkPage({
             ) : (
               <span className="work-vas-empty">暂无声优信息</span>
             )}
+            <WorkProgressMenu
+              options={WORK_PROGRESS_OPTIONS}
+              value={work.progress}
+              currentLabel={workProgressLabel(work.progress)}
+              busy={progressBusy}
+              allowClear
+              onSelect={(value) => void chooseProgress(value)}
+            />
           </div>
           <div className="work-meta-strip">
             {work.rating !== null ? (

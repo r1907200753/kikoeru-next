@@ -374,3 +374,16 @@ export function findActiveCueIndex(cues: SubtitleCue[], positionMs: number): num
   }
   return active;
 }
+
+export function latestCueText(cues: SubtitleCue[], positionMs: number): string {
+  let text = '';
+  for (const cue of cues) {
+    if (cue.startMs > positionMs) {
+      break;
+    }
+    if (cue.text) {
+      text = cue.text;
+    }
+  }
+  return text;
+}

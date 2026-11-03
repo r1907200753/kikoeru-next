@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   isAudioFileName,
+  isSubtitleFileName,
   naturalCompare,
   parseWorkno,
   parseWorkTitle,
@@ -143,13 +144,14 @@ function buildAudioFile(
   return { relativePath, size, mtimeMs, title, disc, idx, sortKey: relativePath };
 }
 
-async function collectAudioFiles(
+async function collectWorkMedia(
   root: string,
   workDir: string,
   maxDepth: number,
   errors: string[],
-): Promise<ScannedAudioFile[]> {
+): Promise<{ files: ScannedAudioFile[]; hasSubtitle: boolean }> {
   const files: ScannedAudioFile[] = [];
+  let hasSubtitle = false;
 
   async function walk(directory: string, depth: number): Promise<void> {
     if (depth > maxDepth) {
@@ -173,7 +175,18 @@ async function collectAudioFiles(
         await walk(child, depth + 1);
         continue;
       }
-      if (!entry.isFile() || !isAudioFileName(entry.name)) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      // .txt 多为 readme，避免把说明文件误判为字幕。
+      if (
+        isSubtitleFileName(entry.name) &&
+        path.extname(entry.name).toLowerCase() !== '.txt'
+      ) {
+        hasSubtitle = true;
+        continue;
+      }
+      if (!isAudioFileName(entry.name)) {
         continue;
       }
       try {
@@ -194,7 +207,7 @@ async function collectAudioFiles(
 
   await walk(workDir, 0);
   files.sort((a, b) => naturalCompare(a.sortKey, b.sortKey));
-  return files;
+  return { files, hasSubtitle };
 }
 
 export async function scanLibrary(options: ScanOptions): Promise<ScanResult> {
@@ -233,7 +246,7 @@ export async function scanLibrary(options: ScanOptions): Promise<ScanResult> {
       continue;
     }
     try {
-      const files = await collectAudioFiles(
+      const media = await collectWorkMedia(
         rootPath,
         work.dirPath,
         options.maxFileDepth ?? DEFAULT_MAX_FILE_DEPTH,
@@ -245,14 +258,15 @@ export async function scanLibrary(options: ScanOptions): Promise<ScanResult> {
         codeType: work.codeType,
         title: work.title,
         relativePath: work.relativePath,
+        hasSubtitle: media.hasSubtitle,
       });
-      syncWorkMedia(db, id, rootId, files);
+      syncWorkMedia(db, id, rootId, media.files);
       if (inserted) {
         worksAdded += 1;
       } else {
         worksUpdated += 1;
       }
-      tracksFound += files.length;
+      tracksFound += media.files.length;
     } catch (error) {
       errors.push(`索引作品失败 ${work.code}：${describeError(error)}`);
     }
@@ -345,7 +359,7 @@ export async function scanWorkDir(options: ScanWorkOptions): Promise<ScanResult>
   }
 
   const errors: string[] = [];
-  const files = await collectAudioFiles(
+  const media = await collectWorkMedia(
     rootPath,
     workDir,
     options.maxFileDepth ?? DEFAULT_MAX_FILE_DEPTH,
@@ -357,15 +371,16 @@ export async function scanWorkDir(options: ScanWorkOptions): Promise<ScanResult>
     codeType: match.type,
     title: parseWorkTitle(path.basename(workDir), match.code),
     relativePath,
+    hasSubtitle: media.hasSubtitle,
   });
-  syncWorkMedia(db, id, rootId, files);
+  syncWorkMedia(db, id, rootId, media.files);
 
   return {
     ...base,
     worksFound: 1,
     worksAdded: inserted ? 1 : 0,
     worksUpdated: inserted ? 0 : 1,
-    tracksFound: files.length,
+    tracksFound: media.files.length,
     errors: errors.slice(0, MAX_REPORTED_ERRORS),
     durationMs: Math.round(performance.now() - startedAt),
   };

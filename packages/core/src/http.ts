@@ -234,21 +234,6 @@ export class HttpClient {
     throw new Error(`重定向次数超过上限（${maxRedirects}）：${redactUrl(url)}`);
   }
 
-  async getPrefix(
-    url: string,
-    bytes = 2048,
-    options: Omit<RequestOptions, 'maxBytes'> = {},
-  ): Promise<HttpResponse> {
-    return this.request(url, {
-      ...options,
-      headers: {
-        range: `bytes=0-${Math.max(0, bytes - 1)}`,
-        ...(options.headers ?? {}),
-      },
-      maxBytes: bytes + 1,
-    });
-  }
-
   async close(): Promise<void> {
     await this.dispatcher?.close();
   }

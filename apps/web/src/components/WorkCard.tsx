@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { coverUrl, type WorkSummary } from '../api';
 import { coverPalette } from '../format';
-import { HeartIcon, MusicIcon, PlayIcon, StarIcon } from '../icons';
+import { HeartIcon, MusicIcon, PlayIcon, StarIcon, SubtitleIcon } from '../icons';
 import { tagHref } from '../tags';
 
 type CoverSize = 'card' | 'hero' | 'mini' | 'player';
@@ -84,11 +84,19 @@ export function WorkCard({
         <a className="work-card-cover-link" href={href} aria-label={`打开 ${work.title}`}>
           <div className="work-card-cover">
             <WorkCover code={work.code} coverAssetId={work.coverAssetId} size="card" />
-            {work.rating !== null ? (
-              <span className="rating-badge">
-                <StarIcon /> {ratingText(work.rating)}
-              </span>
-            ) : null}
+            <div className="card-badges">
+              {work.rating !== null ? (
+                <span className="rating-badge">
+                  <StarIcon /> {ratingText(work.rating)}
+                </span>
+              ) : null}
+              {work.hasSubtitle ? (
+                <span className="subtitle-badge" title="含字幕">
+                  <SubtitleIcon />
+                  <span>字幕</span>
+                </span>
+              ) : null}
+            </div>
             <span className="card-play-hint" aria-hidden="true">
               <PlayIcon />
             </span>

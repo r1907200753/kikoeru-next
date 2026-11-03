@@ -32,6 +32,7 @@ import {
   MonitorIcon,
   MoonIcon,
   MusicIcon,
+  RefreshIcon,
   ScanIcon,
   SunIcon,
   TimerIcon,
@@ -86,7 +87,10 @@ function scrapeSummary(result: ScrapeJobResult): string {
   ).length;
   const coverFailed = result.results.filter((item) => item.cover === 'failed').length;
   const parts = [`刮削完成：成功 ${ok} 部`];
-  if (result.cached > 0) {
+  if ((result.skipped ?? 0) > 0) {
+    parts.push(`已有元数据跳过 ${result.skipped} 部`);
+  }
+  if ((result.cached ?? 0) > 0) {
     parts.push(`负缓存跳过 ${result.cached} 部`);
   }
   if (result.failed > 0) {
@@ -547,7 +551,11 @@ export function SettingsDialog({
     ? [
         ...new Set(
           scrapeResult.results
-            .filter((item) => item.status !== 'ok' || item.cover === 'failed')
+            .filter(
+              (item) =>
+                (item.status !== 'ok' && item.status !== 'skipped') ||
+                item.cover === 'failed',
+            )
             .map((item) => item.code),
         ),
       ]
@@ -621,6 +629,7 @@ export function SettingsDialog({
                       className="btn btn-ghost btn-compact"
                       onClick={() => void runScrape({ rootPath: root })}
                       disabled={runningScrape || rootsBusy || !root.trim()}
+                      title="刮削该库根尚未刮削的作品"
                     >
                       刮削
                     </button>
@@ -814,8 +823,7 @@ export function SettingsDialog({
         <p className="settings-label">元数据刮削</p>
         <section className="settings-card">
           <p className="settings-hint">
-            从 DLsite 拉取标题、社团、发售日、标签与封面。首次扫描后会请求一次 50 部作品大约需要 1～3
-            分钟；失败会进入负缓存（网络类约 10 分钟），期间普通刮削会跳过这些作品，可稍后用「强制重试」立即重新请求。也可以在上方对单个库根点「刮削」。
+            从 DLsite 拉取标题、社团、发售日、标签与封面。已刮削、手动编辑或带 sidecar 元数据的作品默认命中缓存，普通刮削会跳过；点「更新」才会忽略缓存并重新刮削全部作品。失败会进入负缓存（网络类约 10 分钟），期间普通刮削会跳过这些作品，可稍后用「强制重试」立即重新请求。也可以在上方对单个库根点「刮削」。
           </p>
           <div className="scrape-status">
             <span className="stat-pill">
@@ -824,7 +832,7 @@ export function SettingsDialog({
                     scrapingRoot && scrapingRoot !== 'all'
                       ? ` · ${scrapingRoot}`
                       : scrapeForce
-                        ? ' · 强制重试'
+                        ? ' · 忽略缓存'
                         : ''
                   }`
                 : scrapeJob?.status === 'failed'
@@ -859,9 +867,20 @@ export function SettingsDialog({
               className="btn btn-tonal settings-scan"
               onClick={() => void runScrape()}
               disabled={runningScrape || !health}
+              title="只刮削尚未刮削的作品，已有元数据命中缓存"
             >
-              <ScanIcon className={runningScrape ? 'spin' : ''} />
-              {runningScrape ? '刮削中…' : '刮削全部作品'}
+              <ScanIcon className={runningScrape && !scrapeForce ? 'spin' : ''} />
+              {runningScrape && !scrapeForce ? '刮削中…' : '刮削未刮削作品'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost settings-scan"
+              onClick={() => void runScrape({ force: true })}
+              disabled={runningScrape || !health}
+              title="忽略缓存，重新刮削全部作品"
+            >
+              <RefreshIcon className={runningScrape && scrapeForce ? 'spin' : ''} />
+              {runningScrape && scrapeForce ? '更新中…' : '更新'}
             </button>
             {retryCodes.length > 0 ? (
               <button
@@ -871,7 +890,7 @@ export function SettingsDialog({
                 disabled={runningScrape}
                 title="忽略负缓存，重新请求未成功的作品"
               >
-                <ScanIcon className={runningScrape && scrapeForce ? 'spin' : ''} />
+                <ScanIcon />
                 强制重试未完成 {retryCodes.length} 部
               </button>
             ) : null}

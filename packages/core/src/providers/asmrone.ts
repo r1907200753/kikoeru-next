@@ -55,6 +55,9 @@ export interface AsmrOneWork {
   vas: string[];
   durationMs: number | null;
   languageEditions?: AsmrOneLanguageEdition[];
+  userRating?: number | null;
+  progress?: AsmrOneReviewProgress | '';
+  reviewText?: string;
 }
 
 export interface AsmrOneLanguageEdition {
@@ -72,12 +75,15 @@ export interface AsmrOneSearchResult {
   pageSize: number;
 }
 
-export type AsmrOneReviewProgress =
-  | 'marked'
-  | 'listening'
-  | 'listened'
-  | 'replay'
-  | 'postponed';
+export const ASMRONE_PROGRESS_VALUES = [
+  'marked',
+  'listening',
+  'listened',
+  'replay',
+  'postponed',
+] as const;
+
+export type AsmrOneReviewProgress = (typeof ASMRONE_PROGRESS_VALUES)[number];
 
 export type AsmrOneReviewOrder =
   | 'updated_at'
@@ -365,11 +371,15 @@ function parseLanguageEditions(
       );
     }
   }
-  return [...editions.values()].sort(
-    (a, b) =>
-      Number(b.isOriginal) - Number(a.isOriginal) ||
-      (a.code === currentCode ? -1 : b.code === currentCode ? 1 : 0),
-  );
+  const current = currentCode.trim().toUpperCase();
+  return [...editions.values()]
+    // language_editions 会列出尚未入库的翻译版本，选中后会打开空白页；只保留当前版本和库内已有标题的版本。
+    .filter((edition) => edition.code === current || edition.title.trim() !== '')
+    .sort(
+      (a, b) =>
+        Number(b.isOriginal) - Number(a.isOriginal) ||
+        (a.code === current ? -1 : b.code === current ? 1 : 0),
+    );
 }
 
 function normalizeFileType(value: string): AsmrOneFileType {
@@ -497,21 +507,19 @@ function collectTracks(
   return 1;
 }
 
+function normalizeReviewProgress(value: string): AsmrOneReviewProgress | '' {
+  return (ASMRONE_PROGRESS_VALUES as readonly string[]).includes(value)
+    ? (value as AsmrOneReviewProgress)
+    : '';
+}
+
 function normalizeReviewWork(record: Record<string, unknown>): AsmrOneReviewWork {
-  const progress = pickString(record, ['progress']);
   const rating = pickNumber(record, ['userRating', 'user_rating']);
   return {
     ...normalizeWork(record),
     userRating: rating !== null && rating > 0 ? rating : null,
     reviewText: pickString(record, ['review_text', 'reviewText']),
-    progress:
-      progress === 'marked' ||
-      progress === 'listening' ||
-      progress === 'listened' ||
-      progress === 'replay' ||
-      progress === 'postponed'
-        ? progress
-        : '',
+    progress: normalizeReviewProgress(pickString(record, ['progress'])),
     updatedAt: pickString(record, ['updated_at', 'updatedAt']).slice(0, 19),
     userName: pickString(record, ['user_name', 'userName']),
   };
@@ -819,6 +827,39 @@ export class AsmrOneProvider {
       throw new AsmrOneError('parse', 'asmr.one 作品详情格式不正确');
     }
     return normalizeWork(payload);
+  }
+
+  async fetchWorkUserState(workId: number): Promise<{
+    userRating: number | null;
+    progress: AsmrOneReviewProgress | '';
+    reviewText: string;
+  } | null> {
+    const payload = await this.requestJson<unknown>(`/api/work/${workId}`);
+    if (!isRecord(payload)) {
+      return null;
+    }
+    const rating = pickNumber(payload, ['userRating', 'user_rating']);
+    return {
+      userRating: rating !== null && rating > 0 ? rating : null,
+      progress: normalizeReviewProgress(pickString(payload, ['progress'])),
+      reviewText: pickString(payload, ['review_text', 'reviewText']),
+    };
+  }
+
+  async setReviewProgress(
+    workId: number,
+    state: { userRating: number | null; reviewText: string },
+    progress: AsmrOneReviewProgress,
+  ): Promise<void> {
+    await this.requestJson<unknown>('/api/review', {
+      method: 'PUT',
+      body: JSON.stringify({
+        work_id: workId,
+        rating: state.userRating,
+        review_text: state.reviewText,
+        progress,
+      }),
+    });
   }
 
   async listReviews(

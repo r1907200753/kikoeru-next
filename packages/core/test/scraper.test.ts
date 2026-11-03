@@ -160,6 +160,36 @@ test('asmr.one 刮削写入中文标签、评分与来源', async () => {
   }
 });
 
+test('已刮削作品默认命中缓存，force 才重新请求', async () => {
+  const root = await createLibrary();
+  const db = openDatabase(':memory:');
+  try {
+    await scanLibrary({ db, rootPath: root });
+    const initial = listWorksForScrape(db)[0];
+    assert.ok(initial);
+    db.prepare("UPDATE works SET metadata_status = 'scraped' WHERE id = ?").run(initial.id);
+    const item = listWorksForScrape(db).find((work) => work.code === initial.code);
+    assert.ok(item);
+    const counters = { calls: 0 };
+    const provider = fakeProvider(okResult(item.code), counters);
+    const options = {
+      assetsDir: path.join(root, 'assets'),
+      ffmpegPath: 'missing-ffmpeg',
+    };
+
+    const skipped = await scrapeWork(db, provider, item, options);
+    assert.equal(skipped.status, 'skipped');
+    assert.equal(counters.calls, 0);
+
+    const forced = await scrapeWork(db, provider, item, { ...options, force: true });
+    assert.equal(forced.status, 'partial');
+    assert.equal(counters.calls, 1);
+  } finally {
+    db.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('404 写入负缓存，第二次刮削直接命中缓存', async () => {
   const db = openDatabase(':memory:');
   try {

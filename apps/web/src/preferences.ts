@@ -28,7 +28,6 @@ export const HOME_GRID_OPTIONS: Array<{ value: HomeGrid; label: string }> = [
 ];
 
 const PREFERENCES_KEY = 'kikoeru.preferences';
-const AUDIO_ORDER: AudioPriority[] = ['mp3', 'flac', 'wav', 'opus', 'm4a', 'aac'];
 
 export const DEFAULT_PREFERENCES: Preferences = {
   smartPath: true,
@@ -38,10 +37,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   localHomeGrid: 'four',
   onlineHomeGrid: 'four',
 };
-
-export function audioPriorityOrder(first: AudioPriority): AudioPriority[] {
-  return [first, ...AUDIO_ORDER.filter((item) => item !== first)];
-}
 
 export function readPreferences(): Preferences {
   try {

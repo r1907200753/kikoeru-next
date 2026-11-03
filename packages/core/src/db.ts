@@ -217,7 +217,17 @@ CREATE INDEX IF NOT EXISTS idx_operation_logs_created ON operation_logs(created_
 CREATE INDEX IF NOT EXISTS idx_operation_logs_category ON operation_logs(category);
 `;
 
-const LATEST_VERSION = 7;
+const SCHEMA_V8 = `
+ALTER TABLE works ADD COLUMN has_subtitle INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS work_progress (
+  work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,
+  progress TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+const LATEST_VERSION = 8;
 
 function readSchemaVersion(db: DatabaseSync): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: unknown } | undefined;
@@ -302,6 +312,18 @@ function migrate(db: DatabaseSync): void {
       throw error;
     }
     version = 7;
+  }
+  if (version < 8) {
+    db.exec('BEGIN');
+    try {
+      db.exec(SCHEMA_V8);
+      db.exec('PRAGMA user_version = 8');
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    version = 8;
   }
   if (version > LATEST_VERSION) {
     throw new Error(`数据库版本 ${version} 高于当前程序支持的 ${LATEST_VERSION}`);

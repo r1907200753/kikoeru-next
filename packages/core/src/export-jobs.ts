@@ -28,8 +28,6 @@ export type ExportJobStatus =
   | 'failed'
   | 'cancelled';
 
-export const ACTIVE_EXPORT_STATUSES: ExportJobStatus[] = ['queued', 'running', 'paused'];
-
 export interface ExportJobPayload {
   work: AsmrOneWork;
   hashes: string[] | null;
@@ -272,10 +270,6 @@ export function pauseInterruptedExports(db: DatabaseSync): number {
     )
     .run(new Date().toISOString());
   return Number(result.changes);
-}
-
-export function cancelExportJob(db: DatabaseSync, jobId: number, error = '已取消'): void {
-  updateExportJob(db, jobId, { status: 'cancelled', error });
 }
 
 export function deleteExportJob(db: DatabaseSync, jobId: number): boolean {

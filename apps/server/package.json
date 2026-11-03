@@ -1,6 +1,6 @@
 {
   "name": "@kikoeru-next/server",
-  "version": "1.0.6",
+  "version": "1.1.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@fastify/static": "^10.1.8",
-    "@kikoeru-next/core": "1.0.6",
-    "@kikoeru-next/shared": "1.0.6",
+    "@kikoeru-next/core": "1.1.4",
+    "@kikoeru-next/shared": "1.1.4",
     "fastify": "^5.0.0"
   },
   "devDependencies": {

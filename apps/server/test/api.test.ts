@@ -90,23 +90,70 @@ test('扫描、作品详情、Range 流与续播', async () => {
       assert.equal(list.statusCode, 200);
       const listBody = list.json<{
         total: number;
-        items: Array<{ code: string; title: string; trackCount: number }>;
+        items: Array<{
+          code: string;
+          title: string;
+          trackCount: number;
+          hasSubtitle: boolean;
+        }>;
       }>();
       assert.equal(listBody.total, 1);
       assert.equal(listBody.items[0]?.code, 'RJ01426915');
       assert.equal(listBody.items[0]?.title, '测试作品');
       assert.equal(listBody.items[0]?.trackCount, 2);
+      assert.equal(listBody.items[0]?.hasSubtitle, true);
 
       const detail = await app.inject({ method: 'GET', url: '/api/works/RJ01426915' });
       assert.equal(detail.statusCode, 200);
       const detailBody = detail.json<{
         id: number;
+        hasSubtitle: boolean;
+        progress: string;
         tracks: Array<{ id: number; title: string }>;
       }>();
       assert.equal(detailBody.tracks.length, 2);
+      assert.equal(detailBody.hasSubtitle, true);
+      assert.equal(detailBody.progress, '');
       const firstTrack = detailBody.tracks[0];
       assert.ok(firstTrack);
       assert.equal(firstTrack.title, '开场');
+
+      const setProgress = await app.inject({
+        method: 'PUT',
+        url: '/api/works/RJ01426915/progress',
+        payload: { progress: 'listening' },
+      });
+      assert.equal(setProgress.statusCode, 200);
+      assert.deepEqual(setProgress.json(), {
+        code: 'RJ01426915',
+        progress: 'listening',
+      });
+      const progressDetail = await app.inject({
+        method: 'GET',
+        url: '/api/works/RJ01426915',
+      });
+      assert.equal(progressDetail.json<{ progress: string }>().progress, 'listening');
+
+      const clearProgress = await app.inject({
+        method: 'PUT',
+        url: '/api/works/RJ01426915/progress',
+        payload: { progress: null },
+      });
+      assert.equal(clearProgress.statusCode, 200);
+      assert.equal(clearProgress.json<{ progress: string }>().progress, '');
+
+      const invalidProgress = await app.inject({
+        method: 'PUT',
+        url: '/api/works/RJ01426915/progress',
+        payload: { progress: 'postponed' },
+      });
+      assert.equal(invalidProgress.statusCode, 400);
+      const missingProgress = await app.inject({
+        method: 'PUT',
+        url: '/api/works/RJ00000000/progress',
+        payload: { progress: 'marked' },
+      });
+      assert.equal(missingProgress.statusCode, 404);
 
       const files = await app.inject({
         method: 'GET',
