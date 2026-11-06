@@ -382,12 +382,15 @@ export function listLibraryRoots(db: DatabaseSync): LibraryRootRecord[] {
 
 export type WorkSort = 'updated' | 'popular' | 'rating' | 'released' | 'title';
 
+export type WorkProgressFilter = WorkProgress | 'none';
+
 export interface ListWorksOptions {
   query?: string;
   limit: number;
   offset: number;
   sort?: WorkSort;
   favoriteOnly?: boolean;
+  progress?: WorkProgressFilter;
   tag?: string;
   circle?: string;
   va?: string;
@@ -417,6 +420,14 @@ export function listWorks(db: DatabaseSync, options: ListWorksOptions): WorkSumm
   }
   if (options.favoriteOnly) {
     clauses.push(`w.favorite_at <> ''`);
+  }
+  if (options.progress === 'none') {
+    clauses.push('NOT EXISTS (SELECT 1 FROM work_progress wp WHERE wp.work_id = w.id)');
+  } else if (options.progress) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM work_progress wp WHERE wp.work_id = w.id AND wp.progress = ?)',
+    );
+    params.push(options.progress);
   }
   const tag = options.tag?.trim() ?? '';
   if (tag) {
@@ -460,7 +471,14 @@ export function listWorks(db: DatabaseSync, options: ListWorksOptions): WorkSumm
 
 export function listWorkTotal(
   db: DatabaseSync,
-  options: { query?: string; favoriteOnly?: boolean; tag?: string; circle?: string; va?: string },
+  options: {
+    query?: string;
+    favoriteOnly?: boolean;
+    progress?: WorkProgressFilter;
+    tag?: string;
+    circle?: string;
+    va?: string;
+  },
 ): number {
   const params: string[] = [];
   const clauses: string[] = [];
@@ -474,6 +492,14 @@ export function listWorkTotal(
   }
   if (options.favoriteOnly) {
     clauses.push(`favorite_at <> ''`);
+  }
+  if (options.progress === 'none') {
+    clauses.push('NOT EXISTS (SELECT 1 FROM work_progress wp WHERE wp.work_id = works.id)');
+  } else if (options.progress) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM work_progress wp WHERE wp.work_id = works.id AND wp.progress = ?)',
+    );
+    params.push(options.progress);
   }
   const tag = options.tag?.trim() ?? '';
   if (tag) {

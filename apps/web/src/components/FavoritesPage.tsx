@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { listWorks, type WorkSort, type WorkSummary } from '../api';
+import {
+  listWorks,
+  type WorkProgressFilter,
+  type WorkSort,
+  type WorkSummary,
+} from '../api';
 import { HeartIcon } from '../icons';
+import { ProgressFilterSelect } from './ProgressFilterSelect';
 import { WorkCard } from './WorkCard';
 
 const PAGE_SIZE = 60;
@@ -20,12 +26,19 @@ export function FavoritesPage({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
+  const [progressFilter, setProgressFilter] = useState<WorkProgressFilter | ''>('');
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError('');
-    listWorks({ limit: PAGE_SIZE, offset: 0, sort, favoriteOnly: true })
+    listWorks({
+      limit: PAGE_SIZE,
+      offset: 0,
+      sort,
+      favoriteOnly: true,
+      ...(progressFilter ? { progress: progressFilter } : {}),
+    })
       .then((page) => {
         if (!cancelled) {
           setItems(page.items);
@@ -45,7 +58,7 @@ export function FavoritesPage({
     return () => {
       cancelled = true;
     };
-  }, [sort, reloadKey, retryKey]);
+  }, [sort, progressFilter, reloadKey, retryKey]);
 
   const loadMore = async () => {
     if (loadingMore) {
@@ -58,6 +71,7 @@ export function FavoritesPage({
         offset: items.length,
         sort,
         favoriteOnly: true,
+        ...(progressFilter ? { progress: progressFilter } : {}),
       });
       setItems((previous) => [...previous, ...page.items]);
       setTotal(page.total);
@@ -75,7 +89,10 @@ export function FavoritesPage({
           <p className="eyebrow">FAVORITES</p>
           <h2>收藏的作品</h2>
         </div>
-        <span className="section-hint">{loading ? '读取中…' : `${total} 部`}</span>
+        <div className="section-head-tools">
+          <ProgressFilterSelect value={progressFilter} onChange={setProgressFilter} />
+          <span className="section-hint">{loading ? '读取中…' : `${total} 部`}</span>
+        </div>
       </div>
 
       {error ? (
@@ -107,16 +124,22 @@ export function FavoritesPage({
           ))}
         </div>
       ) : items.length === 0 ? (
-        <section className="empty-card">
-          <div className="empty-icon">
-            <HeartIcon />
+        progressFilter ? (
+          <div className="empty-inline">
+            <p>当前进度筛选下没有收藏的作品。</p>
           </div>
-          <h2>还没有收藏</h2>
-          <p>在作品卡片或详情页点击心形，就会收进这里。收藏只保存在本机，不上传云端。</p>
-          <a className="btn btn-primary" href="#/">
-            去曲库看看
-          </a>
-        </section>
+        ) : (
+          <section className="empty-card">
+            <div className="empty-icon">
+              <HeartIcon />
+            </div>
+            <h2>还没有收藏</h2>
+            <p>在作品卡片或详情页点击心形，就会收进这里。收藏只保存在本机，不上传云端。</p>
+            <a className="btn btn-primary" href="#/">
+              去曲库看看
+            </a>
+          </section>
+        )
       ) : (
         <>
           <div className="work-grid">

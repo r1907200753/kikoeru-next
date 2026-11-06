@@ -55,6 +55,7 @@ export interface WorkDetail extends WorkSummary {
 }
 
 export type WorkProgress = 'marked' | 'listening' | 'listened' | 'replay';
+export type WorkProgressFilter = WorkProgress | 'none';
 
 export interface RecentPlayback {
   workId: number;
@@ -74,6 +75,7 @@ export interface WorksPage {
   offset: number;
   sort?: WorkSort;
   favoriteOnly?: boolean;
+  progress?: WorkProgressFilter | '';
 }
 
 export type WorkSort = 'updated' | 'popular' | 'rating' | 'released' | 'title';
@@ -184,6 +186,7 @@ export function listWorks(options: {
   offset: number;
   sort?: WorkSort;
   favoriteOnly?: boolean;
+  progress?: WorkProgressFilter;
 }): Promise<WorksPage> {
   const params = new URLSearchParams({
     limit: String(options.limit),
@@ -206,6 +209,9 @@ export function listWorks(options: {
   }
   if (options.favoriteOnly) {
     params.set('favorite', '1');
+  }
+  if (options.progress) {
+    params.set('progress', options.progress);
   }
   return request<WorksPage>(`/api/works?${params.toString()}`);
 }

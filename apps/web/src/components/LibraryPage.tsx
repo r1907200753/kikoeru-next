@@ -5,6 +5,7 @@ import {
   listWorks,
   type LibraryKind,
   type RecentPlayback,
+  type WorkProgressFilter,
   type WorkSort,
   type WorkSummary,
 } from '../api';
@@ -14,6 +15,7 @@ import type { PlayerApi } from '../player';
 import { resumeRecent } from '../playback';
 import { usePreferences } from '../preferences';
 import { GridDensityToggle } from './GridDensityToggle';
+import { ProgressFilterSelect } from './ProgressFilterSelect';
 import { WorkCard, WorkCover } from './WorkCard';
 
 const PAGE_SIZE = 60;
@@ -45,6 +47,7 @@ export function LibraryPage({
   const [recent, setRecent] = useState<RecentPlayback[]>([]);
   const [retryKey, setRetryKey] = useState(0);
   const [libraryKind, setLibraryKind] = useState<LibraryKind | ''>('');
+  const [progressFilter, setProgressFilter] = useState<WorkProgressFilter | ''>('');
   const [preferences] = usePreferences();
   const gridClass = `work-grid${
     preferences.localHomeGrid === 'four'
@@ -84,7 +87,13 @@ export function LibraryPage({
     let cancelled = false;
     setLoading(true);
     setError('');
-    listWorks({ limit: PAGE_SIZE, offset: 0, sort, favoriteOnly })
+    listWorks({
+      limit: PAGE_SIZE,
+      offset: 0,
+      sort,
+      favoriteOnly,
+      ...(progressFilter ? { progress: progressFilter } : {}),
+    })
       .then((page) => {
         if (!cancelled) {
           setItems(page.items);
@@ -104,7 +113,7 @@ export function LibraryPage({
     return () => {
       cancelled = true;
     };
-  }, [sort, favoriteOnly, reloadKey, retryKey]);
+  }, [sort, favoriteOnly, progressFilter, reloadKey, retryKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +140,7 @@ export function LibraryPage({
         offset: items.length,
         sort,
         favoriteOnly,
+        ...(progressFilter ? { progress: progressFilter } : {}),
       });
       setItems((previous) => [...previous, ...page.items]);
       setTotal(page.total);
@@ -147,7 +157,7 @@ export function LibraryPage({
     }
   };
 
-  const showOnboarding = !loading && !error && !favoriteOnly && total === 0;
+  const showOnboarding = !loading && !error && !favoriteOnly && !progressFilter && total === 0;
   const showRecent = !favoriteOnly && recent.length > 0;
 
   return (
@@ -255,6 +265,7 @@ export function LibraryPage({
           <div className="section-head">
             <h2>{favoriteOnly ? '收藏作品' : '全部作品'}</h2>
             <div className="section-head-tools">
+              <ProgressFilterSelect value={progressFilter} onChange={setProgressFilter} />
               <span className="section-hint">{loading ? '读取中…' : `${total} 部作品`}</span>
               <GridDensityToggle scope="local" />
             </div>
@@ -272,7 +283,13 @@ export function LibraryPage({
             </div>
           ) : items.length === 0 ? (
             <div className="empty-inline">
-              <p>{favoriteOnly ? '还没有收藏的作品，点作品封面右上角的心形即可收藏。' : '曲库中还没有作品。'}</p>
+              <p>
+                {favoriteOnly
+                  ? '还没有收藏的作品，点作品封面右上角的心形即可收藏。'
+                  : progressFilter
+                    ? '当前进度筛选下还没有作品。'
+                    : '曲库中还没有作品。'}
+              </p>
             </div>
           ) : (
             <>

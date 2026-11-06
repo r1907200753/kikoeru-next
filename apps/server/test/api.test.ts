@@ -629,6 +629,50 @@ test('标签组合筛选、随机作品与手动元数据边界', async () => {
       });
       assert.equal(favoriteTag.json<{ total: number }>().total, 1);
 
+      for (const [code, progress] of [
+        ['RJ01426930', 'listening'],
+        ['RJ01426931', 'marked'],
+      ] as const) {
+        const marked = await app.inject({
+          method: 'PUT',
+          url: `/api/works/${code}/progress`,
+          payload: { progress },
+        });
+        assert.equal(marked.statusCode, 200);
+      }
+
+      const byProgress = await app.inject({
+        method: 'GET',
+        url: '/api/works?progress=listening',
+      });
+      const byProgressBody = byProgress.json<{
+        total: number;
+        progress?: string;
+        items: Array<{ code: string }>;
+      }>();
+      assert.equal(byProgressBody.total, 1);
+      assert.equal(byProgressBody.progress, 'listening');
+      assert.equal(byProgressBody.items[0]?.code, 'RJ01426930');
+
+      const byNone = await app.inject({ method: 'GET', url: '/api/works?progress=none' });
+      const byNoneBody = byNone.json<{ total: number; items: Array<{ code: string }> }>();
+      assert.equal(byNoneBody.total, 1);
+      assert.equal(byNoneBody.items[0]?.code, 'RJ01426932');
+
+      const byMarkedTag = await app.inject({
+        method: 'GET',
+        url: '/api/works?tag=ASMR&progress=marked',
+      });
+      const byMarkedTagBody = byMarkedTag.json<{ total: number; items: Array<{ code: string }> }>();
+      assert.equal(byMarkedTagBody.total, 1);
+      assert.equal(byMarkedTagBody.items[0]?.code, 'RJ01426931');
+
+      const invalidProgress = await app.inject({
+        method: 'GET',
+        url: '/api/works?progress=bogus',
+      });
+      assert.equal(invalidProgress.json<{ total: number }>().total, 3);
+
       const queryTag = await app.inject({
         method: 'GET',
         url: `/api/works?tag=ASMR&q=${encodeURIComponent('标签乙')}`,

@@ -93,6 +93,7 @@ import {
   type OperationLogInput,
   type ScrapeSource,
   type WorkProgress,
+  type WorkProgressFilter,
   type WorkSort,
 } from '@kikoeru-next/core';
 import { mimeTypeForFileName, normalizeWorkno } from '@kikoeru-next/shared';
@@ -435,6 +436,21 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     }
   };
 
+  const normalizeWorkProgressFilter = (
+    value: string | undefined,
+  ): WorkProgressFilter | '' => {
+    switch (value) {
+      case 'marked':
+      case 'listening':
+      case 'listened':
+      case 'replay':
+      case 'none':
+        return value;
+      default:
+        return '';
+    }
+  };
+
   const normalizeOnlineOrder = (value: string | undefined): AsmrOneListOrder => {
     switch (value) {
       case 'release':
@@ -619,7 +635,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
   app.get('/api/ping', async () => ({
     ok: true,
     name: 'kikoeru-next',
-    version: '1.1.4',
+    version: '1.1.5',
     serverTime: new Date().toISOString(),
   }));
 
@@ -627,7 +643,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     const settings = getSettings();
     return {
       ok: true,
-      version: '1.1.4',
+      version: '1.1.5',
       libraryPath: settings.libraryPath,
       libraryPaths: settings.libraryPaths,
       workCount: countWorks(db),
@@ -1004,6 +1020,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
       offset?: string;
       sort?: string;
       favorite?: string;
+      progress?: string;
     };
   }>('/api/works', async (request) => {
     const limit = clampInt(request.query.limit, 1, 200, 60);
@@ -1014,9 +1031,27 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     const va = request.query.va?.trim() ?? '';
     const sort = normalizeSort(request.query.sort);
     const favoriteOnly = request.query.favorite === '1';
+    const progress = normalizeWorkProgressFilter(request.query.progress);
     return {
-      items: listWorks(db, { query, tag, circle, va, limit, offset, sort, favoriteOnly }),
-      total: listWorkTotal(db, { query, tag, circle, va, favoriteOnly }),
+      items: listWorks(db, {
+        query,
+        tag,
+        circle,
+        va,
+        limit,
+        offset,
+        sort,
+        favoriteOnly,
+        ...(progress ? { progress } : {}),
+      }),
+      total: listWorkTotal(db, {
+        query,
+        tag,
+        circle,
+        va,
+        favoriteOnly,
+        ...(progress ? { progress } : {}),
+      }),
       limit,
       offset,
       sort,
@@ -1024,6 +1059,7 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
       tag,
       circle,
       va,
+      progress,
     };
   });
 
